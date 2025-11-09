@@ -1,0 +1,163 @@
+{% extends "base.html" %} {% from "macros.jinja" import window_vars with context
+%} {% block scripts %} {{ window_vars(user) }}
+<script src="{{ static_url_for('chaospad/static', path='js/index.js') }}"></script>
+{% endblock %} {% block page %}
+<div class="row q-col-gutter-md">
+  <div class="col-12 col-md-8 col-lg-7 q-gutter-y-md">
+    <div class="q-mt-lg">
+      <span class="text-h5">Pads</span>
+    </div>
+    <q-card id="padsCard" class="q-mt-xs">
+      <q-card-section class="">
+        <div class="row items-center no-wrap q-mb-md">
+          <div class="col">
+            <q-input
+              :label="$t('search')"
+              dense
+              class="q-pr-xl"
+              v-model="padsTable.search"
+            >
+              <template v-slot:before>
+                <q-icon name="search"> </q-icon>
+              </template>
+              <template v-slot:append>
+                <q-icon
+                  v-if="padsTable.search !== ''"
+                  name="close"
+                  @click="padsTable.search = ''"
+                  class="cursor-pointer"
+                >
+                </q-icon>
+              </template>
+            </q-input>
+          </div>
+          <div class="col-auto">
+            <q-btn @click="showNewPadsForm()" unelevated split color="primary">
+              New Pad
+            </q-btn>
+
+            <q-btn flat color="grey" icon="file_download" @click="exportPadsCSV"
+              >CSV</q-btn
+            >
+          </div>
+        </div>
+        <q-table
+          dense
+          flat
+          :rows="padsList"
+          row-key="id"
+          :columns="padsTable.columns"
+          v-model:pagination="padsTable.pagination"
+          :loading="padsTable.loading"
+          @request="getPads"
+        >
+          <template v-slot:header="props">
+            <q-tr :props="props">
+              <q-th auto-width></q-th>
+              <q-th v-for="col in props.cols" :key="col.name" :props="props">
+                ${ col.label }
+              </q-th>
+            </q-tr>
+          </template>
+
+          <template v-slot:body="props">
+            <q-tr :props="props">
+              <q-td auto-width>
+                <q-btn
+                  flat
+                  dense
+                  size="xs"
+                  icon="launch"
+                  color="primary"
+                  type="a"
+                  :href="'/chaospad/' + props.row.id"
+                  target="_blank"
+                  class="q-mr-sm"
+                  ><q-tooltip>Open public page</q-tooltip></q-btn
+                >
+
+                <q-btn
+                  flat
+                  dense
+                  size="xs"
+                  @click="showEditPadsForm(props.row)"
+                  icon="edit"
+                  color="light-blue"
+                  class="q-mr-sm"
+                >
+                  <q-tooltip> Edit </q-tooltip>
+                </q-btn>
+
+                <q-btn
+                  flat
+                  dense
+                  size="xs"
+                  @click="deletePads(props.row.id)"
+                  icon="cancel"
+                  color="pink"
+                  class="q-mr-sm"
+                >
+                  <q-tooltip> Delete </q-tooltip>
+                </q-btn>
+              </q-td>
+
+              <q-td v-for="col in props.cols" :key="col.name" :props="props">
+                <div v-if="col.field == 'updated_at'">
+                  <span v-text="dateFromNow(col.value)"> </span>
+                </div>
+                <div v-else>${ col.value }</div>
+              </q-td>
+            </q-tr>
+          </template>
+        </q-table>
+      </q-card-section>
+    </q-card>
+  </div>
+
+  <div class="col-12 col-md-4 col-lg-5 q-gutter-y-md">
+    <q-card>
+      <q-card-section>
+        <h6 class="text-subtitle1 q-my-none">{{SITE_TITLE}} ChaosPad</h6>
+        <p>Collaborative pads</p>
+      </q-card-section>
+      <q-card-section class="q-pa-none">
+        <q-separator></q-separator>
+        <q-list>
+          {% include "chaospad/_api_docs.html" %}
+          <q-separator></q-separator>
+          {% include "chaospad/_chaospad.html" %}
+        </q-list>
+      </q-card-section>
+    </q-card>
+  </div>
+
+  <!--/////////////////////////////////////////////////-->
+  <!--//////////////FORM DIALOG////////////////////////-->
+  <!--/////////////////////////////////////////////////-->
+
+  <q-dialog v-model="padsFormDialog.show" position="top">
+    <q-card
+      v-if="padsFormDialog.show"
+      class="q-pa-lg q-pt-md lnbits__dialog-card q-col-gutter-md"
+    >
+      <span class="text-h5">Pads</span>
+
+      <q-input
+        filled
+        dense
+        v-model.trim="padsFormDialog.data.name"
+        label="Pad name"
+        hint=" "
+      ></q-input>
+
+      <div class="row q-mt-lg">
+        <q-btn @click="savePads" unelevated color="primary">
+          <span v-if="padsFormDialog.data.id">Update</span>
+          <span v-else>Create</span>
+        </q-btn>
+        <q-btn v-close-popup flat color="grey" class="q-ml-auto">Cancel</q-btn>
+      </div>
+    </q-card>
+  </q-dialog>
+</div>
+{% endblock %}

@@ -1,0 +1,277 @@
+{% extends "public.html" %} {% block title %}{{ public_page_name }} - ChaosPad
+{% endblock %} {% block footer %}{% endblock %} {% block page_container %}
+<q-page-container>
+  <q-page>
+    <div class="row q-col-gutter-md justify-center items-stretch window-height">
+      <div
+        class="col-12 col-md-6 q-gutter-y-md column justify-between full-height"
+      >
+        <q-card class="full-height column no-wrap pad-card">
+          <q-card-section class="q-pa-none col">
+            <div class="pad-wrapper">
+              <textarea
+                v-model="padText"
+                class="pad-textarea"
+                placeholder="Type here..."
+                :maxlength="MAX_CHARS"
+                @input="onLocalInput"
+              ></textarea>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+  </q-page>
+</q-page-container>
+{% endblock %} {% block styles %}
+<style>
+  .q-header,
+  .q-footer {
+    display: none;
+  }
+  .pad-card {
+    display: flex;
+    flex-direction: column;
+  }
+  .pad-card .q-card__section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .pad-wrapper {
+    position: relative;
+    height: 100%;
+  }
+  .pad-textarea {
+    width: 100%;
+    height: 100%;
+    background: #f3efe6;
+    color: #3a3a36;
+    border: 1px solid #d7cfbf;
+    border-radius: 8px;
+    padding: 14px 16px;
+    line-height: 1.55;
+    font-size: 16px;
+    resize: none;
+  }
+  .pad-textarea:focus {
+    border-color: #b79a6a;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(183, 154, 106, 0.15);
+  }
+</style>
+{% endblock %} {% block scripts %}
+<script type="module">
+  import * as Y from 'https://esm.sh/yjs@13.6.18'
+  window.Y = Y
+</script>
+
+<script>
+  function whenYReady(fn){
+    if (window.Y) return fn();
+    const iv = setInterval(() => { if (window.Y){ clearInterval(iv); fn(); } }, 50);
+  }
+
+  const FRAME_YUPDATE = 0x01;
+  const FRAME_PING = 0x02;
+
+  function padsWsUrl(padsId) {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    return `${proto}://${location.host}/chaospad/ws/${padsId}`;
+  }
+  function padsSnapshotUrl(padsId) {
+    return `/chaospad/api/v1/snapshot/${padsId}`;
+  }
+
+  const CLIENT_THROTTLE_MS = 3000;
+  const LOOP_INTERVAL_MS   = 5000;
+  const JITTER_MS          = 500;
+  const NOTIFY_COOLDOWN_MS = 1200;
+  const MAX_CHARS = {{ (max_chars or 6000) | int }};
+
+  window.app = Vue.createApp({
+    el: "#vue",
+    mixins: [windowMixin],
+    data() {
+      return {
+        padsId: "{{ pads_id }}",
+        padText: "",
+        ws: null,
+        wsHeartbeat: null,
+        reconnectTimer: null,
+        ydoc: null,
+        ytext: null,
+        snapshotTimer: null,
+        lastSnapshotAt: 0,
+        lastHash: 0,
+        lastNotifyAt: 0,
+        MAX_CHARS,
+      };
+    },
+    methods: {
+      b64ToUint8(b64) {
+        try {
+          const bin = atob(b64);
+          const len = bin.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+          return bytes;
+        } catch { return new Uint8Array(); }
+      },
+      fnv1a32(str){
+        let h = 0x811c9dc5;
+        for (let i = 0; i < str.length; i++){
+          h ^= str.charCodeAt(i);
+          h = (h >>> 0) * 0x01000193;
+        }
+        return h >>> 0;
+      },
+      notifyLimit() {
+        const now = Date.now();
+        if (now - this.lastNotifyAt < NOTIFY_COOLDOWN_MS) return;
+        this.lastNotifyAt = now;
+        this.$q.notify({
+          type: "negative",
+          message: `Character limit reached (${this.MAX_CHARS.toLocaleString()} chars).`,
+          timeout: 2000,
+          position: "bottom",
+        });
+      },
+      onLocalInput(evt) {
+        if (!this.ytext) return;
+        const raw = evt.target.value;
+        let capped = raw;
+        if (raw.length > this.MAX_CHARS) {
+          capped = raw.slice(0, this.MAX_CHARS);
+          if (capped !== this.padText) this.padText = capped;
+          this.notifyLimit();
+        }
+        this.ytext.doc.transact(() => {
+          this.ytext.delete(0, this.ytext.length);
+          this.ytext.insert(0, capped);
+        });
+      },
+      setupYjs() {
+        this.ydoc = new window.Y.Doc();
+        this.ytext = this.ydoc.getText("content");
+        this.ytext.observe(() => {
+          const newText = this.ytext.toString();
+          if (newText !== this.padText) this.padText = newText;
+        });
+        this.ydoc.on("update", (update) => {
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            const framed = new Uint8Array(1 + update.length);
+            framed[0] = FRAME_YUPDATE;
+            framed.set(update, 1);
+            this.ws.send(framed);
+          }
+        });
+      },
+      connectWS() {
+        try { this.ws?.close(); } catch {}
+        this.ws = new WebSocket(padsWsUrl(this.padsId));
+        this.ws.binaryType = "arraybuffer";
+        this.ws.onopen = async () => {
+          await this.loadSnapshotOnce();
+          this.wsHeartbeat = setInterval(() => {
+            if (this.ws?.readyState === WebSocket.OPEN)
+              this.ws.send(Uint8Array.of(FRAME_PING));
+          }, 25000);
+        };
+        this.ws.onmessage = (evt) => {
+          const buf = new Uint8Array(evt.data);
+          if (!buf.length) return;
+          const mtype = buf[0];
+          if (mtype === FRAME_YUPDATE) {
+            try { Y.applyUpdate(this.ydoc, buf.subarray(1)); } catch {}
+          }
+        };
+        const origClose = this.ws.onclose;
+        this.ws.onclose = (...args) => {
+          this.postSnapshot(true);
+          clearInterval(this.wsHeartbeat);
+          this.wsHeartbeat = null;
+          this.reconnectTimer = setTimeout(() => this.connectWS(), 1000);
+          if (origClose) origClose.apply(this.ws, args);
+        };
+      },
+      async loadSnapshotOnce() {
+        try {
+          const r = await fetch(padsSnapshotUrl(this.padsId));
+          if (!r.ok) return;
+          const j = await r.json();
+          if (j && j.exists && j.update_blob) {
+            const bytes = this.b64ToUint8(j.update_blob);
+            if (bytes.length) Y.applyUpdate(this.ydoc, bytes);
+          }
+          const text = this.ytext.toString();
+          if (text.length > this.MAX_CHARS) {
+            this.ytext.doc.transact(() => {
+              this.ytext.delete(0, this.ytext.length);
+              this.ytext.insert(0, text.slice(0, this.MAX_CHARS));
+            });
+            this.notifyLimit();
+          }
+        } catch (e) {
+          console.warn("Failed to load snapshot", e);
+        }
+      },
+      async postSnapshot(final = false) {
+        try {
+          const text = this.ytext.toString();
+          const hash = this.fnv1a32(text);
+          if (!final && hash === this.lastHash) return;
+          if (!final) {
+            const now = Date.now();
+            if (now - this.lastSnapshotAt < CLIENT_THROTTLE_MS) return;
+          }
+          const update = Y.encodeStateAsUpdate(this.ydoc);
+          const r = await fetch(padsSnapshotUrl(this.padsId), {
+            method: "POST",
+            keepalive: final === true,
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "x-char-count": String(text.length),
+              ...(final ? { "x-final": "1" } : {})
+            },
+            body: update,
+          });
+          if (r.ok) {
+            this.lastSnapshotAt = Date.now();
+            this.lastHash = hash;
+          }
+        } catch (e) {
+          if (!final) console.warn("Snapshot failed:", e);
+        }
+      },
+      startSnapshotLoop() {
+        if (this.snapshotTimer) return;
+        setTimeout(() => this.postSnapshot(false), 1000 + Math.random() * JITTER_MS);
+        this.snapshotTimer = setInterval(() => {
+          this.postSnapshot(false);
+        }, LOOP_INTERVAL_MS + Math.floor(Math.random() * JITTER_MS));
+      },
+      stopSnapshotLoop() {
+        if (this.snapshotTimer) clearInterval(this.snapshotTimer);
+        this.snapshotTimer = null;
+      },
+    },
+    mounted() {
+      whenYReady(() => {
+        this.setupYjs();
+        this.connectWS();
+        this.startSnapshotLoop();
+        const finalSave = () => this.postSnapshot(true);
+        window.addEventListener("pagehide", finalSave);
+        window.addEventListener("beforeunload", finalSave);
+      });
+    },
+    unmounted() {
+      try { this.ws?.close(); } catch {}
+      if (this.wsHeartbeat) clearInterval(this.wsHeartbeat);
+      this.stopSnapshotLoop();
+      try { this.ydoc?.destroy(); } catch {}
+    },
+  });
+</script>
+{% endblock %}
