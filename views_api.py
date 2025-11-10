@@ -1,6 +1,5 @@
 import asyncio
 from http import HTTPStatus
-from time import time
 
 from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.exceptions import HTTPException
@@ -35,10 +34,8 @@ pads_filters = parse_filters(PadsFilters)
 chaospad_api_router = APIRouter()
 
 MAX_ROOM_PEERS = 10
-SNAPSHOT_MIN_INTERVAL = 3.0
-MAX_CHARS = 6000
+MAX_CHARS = 12000
 
-_SNAPSHOT_LAST_AT: dict[str, float] = {}
 _SNAPSHOT_LOCKS: dict[str, asyncio.Lock] = {}
 
 
@@ -262,18 +259,7 @@ async def api_post_snapshot(pads_id: str, request: Request) -> SnapshotWriteResu
         pass
 
     async with _pad_lock(pads_id):
-        now = time()
-        last = _SNAPSHOT_LAST_AT.get(pads_id, 0.0)
-        over_limit = (now - last) < SNAPSHOT_MIN_INTERVAL
-
-        if over_limit and not is_final:
-            raise HTTPException(
-                HTTPStatus.TOO_MANY_REQUESTS, f"Snapshots limited to one every {int(SNAPSHOT_MIN_INTERVAL)}s."
-            )
-
-        _SNAPSHOT_LAST_AT[pads_id] = now
-
         await create_snapshot(pads_id, body)
         await prune_old_snapshots(pads_id)
 
-    return SnapshotWriteResult(ok=True, final=is_final, rate_limited=over_limit)
+    return SnapshotWriteResult(ok=True, final=is_final, rate_limited=False)

@@ -6,7 +6,8 @@ from lnbits.core.models import User
 from lnbits.decorators import check_user_exists
 from lnbits.helpers import template_renderer
 
-from .crud import get_pads_by_id
+from .crud import get_latest_snapshot, get_pads_by_id
+from .models import SnapshotResponse
 
 chaospad_generic_router = APIRouter()
 
@@ -30,10 +31,8 @@ async def pads_public_page(req: Request, pads_id: str):
 
     public_page_name = getattr(pads, "name", "") or ""
     public_page_description = ""
-    initial_content = getattr(pads, "content", "") or ""
-
-    max_words = 500
-    max_room_peers = 10
+    blob = await get_latest_snapshot(pads_id)
+    initial_content = SnapshotResponse.from_bytes(blob).update_blob or ""
 
     return chaospad_renderer().TemplateResponse(
         "chaospad/public_page.html",
@@ -43,7 +42,5 @@ async def pads_public_page(req: Request, pads_id: str):
             "public_page_name": public_page_name,
             "public_page_description": public_page_description,
             "initial_content": initial_content,
-            "max_words": max_words,
-            "room_cap": max_room_peers,
         },
     )
