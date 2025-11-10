@@ -9,7 +9,6 @@ from .models import (
 
 db = Database("ext_chaospad")
 
-
 ########################### Pads ############################
 async def create_pads(user_id: str, data: CreatePads) -> Pads:
     pads = Pads(**data.dict(), id=urlsafe_short_hash(), user_id=user_id)

@@ -57,8 +57,6 @@ async def api_create_pads(
     data: CreatePads,
     user: User = Depends(check_user_exists),
 ) -> Pads:
-    if _count_chars(data.content) > MAX_CHARS:
-        raise HTTPException(HTTPStatus.BAD_REQUEST, f"Content exceeds {MAX_CHARS} characters.")
     pads = await create_pads(user.id, data)
     return pads
 
@@ -74,9 +72,6 @@ async def api_update_pads(
         raise HTTPException(HTTPStatus.NOT_FOUND, "Pads not found.")
     if pads.user_id != user.id:
         raise HTTPException(HTTPStatus.FORBIDDEN, "You do not own this pads.")
-
-    if _count_chars(data.content) > MAX_CHARS:
-        raise HTTPException(HTTPStatus.BAD_REQUEST, f"Content exceeds {MAX_CHARS} characters.")
 
     pads = await update_pads(Pads(**{**pads.dict(), **data.dict()}))
     return pads
