@@ -14,13 +14,38 @@
                 class="pad-textarea"
                 placeholder="Type here..."
                 :maxlength="MAX_CHARS"
+                :readonly="toggleLock"
                 @input="onLocalInput"
               ></textarea>
 
               <!-- Counter + Save status -->
               <div class="pad-meta">
+                <span
+                  class="save-status no-pointer"
+                  :class="saveStatus"
+                  v-text="saveStatus"
+                ></span>
+                <span
+                  class="char-counter no-pointer"
+                  v-text="`${MAX_CHARS - padText.length} left`"
+                ></span>
                 <q-btn
                   round
+                  flat
+                  dense
+                  color="primary"
+                  :icon="toggleLock ? 'lock' : 'lock_open'"
+                  @click="toggleLock = !toggleLock"
+                >
+                  <q-tooltip
+                    ><span
+                      v-text="toggleLock ? 'Unlock editing' : 'Lock pad'"
+                    ></span
+                  ></q-tooltip>
+                </q-btn>
+                <q-btn
+                  round
+                  dense
                   @click="urlShow = true"
                   flat
                   color="primary"
@@ -28,15 +53,6 @@
                 >
                   <q-tooltip>Show URL of the QR code</q-tooltip>
                 </q-btn>
-                <span
-                  class="char-counter no-pointer"
-                  v-text="`${MAX_CHARS - padText.length} left`"
-                ></span>
-                <span
-                  class="save-status no-pointer"
-                  :class="saveStatus"
-                  v-text="saveStatus"
-                ></span>
               </div>
             </div>
           </q-card-section>
@@ -165,6 +181,7 @@
         suppressObserve: false,  // mute "unsaved" during initial load
         urlShow: false,
         currentUrl: window.location.href,
+        toggleLock: true,
       };
     },
     methods: {
