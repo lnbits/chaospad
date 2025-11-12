@@ -45,10 +45,8 @@
     </div>
   </q-page>
 </q-page-container>
-<q-dialog v-model="urlShow">
-  <q-card class="q-pa-lg q-pt-md lnbits__dialog-card q-col-gutter-md">
-    <lnbits-qrcode :value="currentUrl" :show-buttons="false"></lnbits-qrcode>
-  </q-card>
+<q-dialog v-model="urlShow" position="top">
+  <lnbits-qrcode :value="currentUrl" :show-buttons="false"></lnbits-qrcode>
 </q-dialog>
 {% endblock %} {% block styles %}
 <style>
@@ -165,7 +163,7 @@
         saveStatus: 'saved',     // 'saved' | 'unsaved'
         suppressObserve: false,  // mute "unsaved" during initial load
         urlShow: false,
-        currentUrl: "{{ public_page_url }}",
+        currentUrl: window.location.href,
       };
     },
     methods: {
