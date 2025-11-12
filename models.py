@@ -2,11 +2,13 @@ from base64 import b64encode
 from datetime import datetime, timezone
 
 from lnbits.db import FilterModel
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
+
 
 ########################### Pads ############################
 class CreatePads(BaseModel):
     name: str
+
 
 class Pads(BaseModel):
     id: str

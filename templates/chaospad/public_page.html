@@ -19,12 +19,21 @@
 
               <!-- Counter + Save status -->
               <div class="pad-meta">
+                <q-btn
+                  round
+                  @click="urlShow = true"
+                  flat
+                  color="primary"
+                  icon="qr_code_2"
+                >
+                  <q-tooltip>Show URL of the QR code</q-tooltip>
+                </q-btn>
                 <span
-                  class="char-counter"
+                  class="char-counter no-pointer"
                   v-text="`${MAX_CHARS - padText.length} left`"
                 ></span>
                 <span
-                  class="save-status"
+                  class="save-status no-pointer"
                   :class="saveStatus"
                   v-text="saveStatus"
                 ></span>
@@ -36,6 +45,11 @@
     </div>
   </q-page>
 </q-page-container>
+<q-dialog v-model="urlShow">
+  <q-card class="q-pa-lg q-pt-md lnbits__dialog-card q-col-gutter-md">
+    <lnbits-qrcode :value="currentUrl" :show-buttons="false"></lnbits-qrcode>
+  </q-card>
+</q-dialog>
 {% endblock %} {% block styles %}
 <style>
   .q-header,
@@ -85,6 +99,8 @@
     gap: 10px;
     align-items: center;
     font-size: 13px;
+  }
+  .no-pointer {
     pointer-events: none;
     user-select: none;
   }
@@ -148,6 +164,8 @@
         MAX_CHARS,
         saveStatus: 'saved',     // 'saved' | 'unsaved'
         suppressObserve: false,  // mute "unsaved" during initial load
+        urlShow: false,
+        currentUrl: "{{ public_page_url }}",
       };
     },
     methods: {
