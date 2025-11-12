@@ -150,6 +150,7 @@
       return {
         padsId: "{{ pads_id }}",
         padText: "",
+        initial_content: "{{ initial_content }}",
         ws: null,
         wsHeartbeat: null,
         reconnectTimer: null,
@@ -331,6 +332,16 @@
     mounted() {
       whenYReady(() => {
         this.setupYjs();
+        if (this.initial_content != ""){
+          this.suppressObserve = true;
+          const bytes = this.b64ToUint8(this.initial_content);
+          if (bytes.length) {
+            try { Y.applyUpdate(this.ydoc, bytes); } catch {}
+          }
+          this.padText = this.ytext.toString();
+          this.suppressObserve = false;
+          this.saveStatus = 'saved';
+        }
         this.connectWS();
         this.startSnapshotLoop();
         const finalSave = () => this.postSnapshot(true);
