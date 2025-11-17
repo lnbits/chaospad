@@ -34,7 +34,7 @@ pads_filters = parse_filters(PadsFilters)
 chaospad_api_router = APIRouter()
 
 MAX_ROOM_PEERS = 10
-MAX_CHARS = 12000
+MAX_CHARS = 20000
 
 _SNAPSHOT_LOCKS: dict[str, asyncio.Lock] = {}
 
