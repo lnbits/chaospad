@@ -18,7 +18,6 @@
                 @input="onLocalInput"
               ></textarea>
 
-              <!-- Counter + Save status -->
               <div class="pad-meta">
                 <span
                   class="save-status no-pointer"
@@ -37,12 +36,33 @@
                   :icon="toggleLock ? 'lock' : 'lock_open'"
                   @click="toggleLock = !toggleLock"
                 >
-                  <q-tooltip
-                    ><span
+                  <q-tooltip>
+                    <span
                       v-text="toggleLock ? 'Unlock editing' : 'Lock pad'"
-                    ></span
-                  ></q-tooltip>
+                    ></span>
+                  </q-tooltip>
                 </q-btn>
+
+                <q-btn
+                  round
+                  flat
+                  dense
+                  color="primary"
+                  :icon="isSpeaking && !isPaused ? 'pause' : 'play_arrow'"
+                  @click="toggleSpeech"
+                  :disable="!speechSupported || !padText.length"
+                >
+                  <q-tooltip>
+                    <span v-if="!speechSupported">
+                      Speech not supported in this browser
+                    </span>
+                    <span
+                      v-else
+                      v-text="isSpeaking && !isPaused ? 'Pause reading' : 'Read pad aloud'"
+                    ></span>
+                  </q-tooltip>
+                </q-btn>
+
                 <q-btn
                   round
                   dense
@@ -104,7 +124,6 @@
     box-shadow: 0 0 0 2px rgba(183, 154, 106, 0.15);
   }
 
-  /* Counter + status container */
   .pad-meta {
     position: absolute;
     bottom: 8px;
@@ -125,10 +144,10 @@
 
   .save-status.saved {
     color: #2e7d32;
-  } /* green */
+  }
   .save-status.unsaved {
     color: #d08900;
-  } /* warm orange */
+  }
 </style>
 {% endblock %} {% block scripts %}
 <script type="module">
@@ -137,241 +156,375 @@
 </script>
 
 <script>
-  function whenYReady(fn){
-    if (window.Y) return fn();
-    const iv = setInterval(() => { if (window.Y){ clearInterval(iv); fn(); } }, 50);
-  }
+    function whenYReady(fn){
+      if (window.Y) return fn()
+      const iv = setInterval(() => { if (window.Y){ clearInterval(iv); fn() } }, 50)
+    }
 
-  const FRAME_YUPDATE = 0x01;
-  const FRAME_PING = 0x02;
+    const FRAME_YUPDATE = 0x01
+    const FRAME_PING = 0x02
 
-  function padsWsUrl(padsId) {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    return `${proto}://${location.host}/chaospad/ws/${padsId}`;
-  }
-  function padsSnapshotUrl(padsId) {
-    return `/chaospad/api/v1/snapshot/${padsId}`;
-  }
+    function padsWsUrl(padsId) {
+      const proto = location.protocol === "https:" ? "wss" : "ws"
+      return `${proto}://${location.host}/chaospad/ws/${padsId}`
+    }
+    function padsSnapshotUrl(padsId) {
+      return `/chaospad/api/v1/snapshot/${padsId}`
+    }
 
-  const CLIENT_THROTTLE_MS = 3000;
-  const LOOP_INTERVAL_MS   = 5000;
-  const JITTER_MS          = 500;
-  const NOTIFY_COOLDOWN_MS = 1200;
-  const MAX_CHARS = {{ (max_chars or 12000) | int }};
+    const CLIENT_THROTTLE_MS = 3000
+    const LOOP_INTERVAL_MS   = 5000
+    const JITTER_MS          = 500
+    const NOTIFY_COOLDOWN_MS = 1200
+    const MAX_CHARS = {{ (max_chars or 12000) | int }}
 
-  window.app = Vue.createApp({
-    el: "#vue",
-    mixins: [windowMixin],
-    data() {
-      return {
-        padsId: "{{ pads_id }}",
-        padText: "",
-        initial_content: "{{ initial_content }}",
-        ws: null,
-        wsHeartbeat: null,
-        reconnectTimer: null,
-        ydoc: null,
-        ytext: null,
-        snapshotTimer: null,
-        lastSnapshotAt: 0,
-        lastHash: 0,
-        lastNotifyAt: 0,
-        MAX_CHARS,
-        saveStatus: 'saved',     // 'saved' | 'unsaved'
-        suppressObserve: false,  // mute "unsaved" during initial load
-        urlShow: false,
-        currentUrl: window.location.href,
-        toggleLock: true,
+    window.app = Vue.createApp({
+      el: "#vue",
+      mixins: [windowMixin],
+      data() {
+        return {
+          padsId: "{{ pads_id }}",
+          padText: "",
+          initial_content: "{{ initial_content }}",
+          ws: null,
+          wsHeartbeat: null,
+          reconnectTimer: null,
+          ydoc: null,
+          ytext: null,
+          snapshotTimer: null,
+          lastSnapshotAt: 0,
+          lastHash: 0,
+          lastNotifyAt: 0,
+          MAX_CHARS,
+          saveStatus: 'saved',
+          suppressObserve: false,
+          urlShow: false,
+          currentUrl: window.location.href,
+          toggleLock: true,
+
+          isSpeaking: false,
+          isPaused: false,
+          speechSupported: false,
+          speechVoice: null,
+          currentUtterance: null,
+          speechTextHash: 0,
+        }
+      },
+      methods: {
+        b64ToUint8(b64) {
+          try {
+            const bin = atob(b64)
+            const len = bin.length
+            const bytes = new Uint8Array(len)
+            for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i)
+            return bytes
+          } catch {
+            return new Uint8Array()
+          }
+        },
+        fnv1a32(str){
+          let h = 0x811c9dc5
+          for (let i = 0; i < str.length; i++){
+            h ^= str.charCodeAt(i)
+            h = (h >>> 0) * 0x01000193
+          }
+          return h >>> 0
+        },
+        notifyLimit() {
+          const now = Date.now()
+          if (now - this.lastNotifyAt < NOTIFY_COOLDOWN_MS) return
+          this.lastNotifyAt = now
+          this.$q.notify({
+            type: "negative",
+            message: `Character limit reached (${this.MAX_CHARS.toLocaleString()} chars).`,
+            timeout: 2000,
+            position: "bottom",
+          })
+        },
+
+        initSpeech() {
+          if (typeof window === 'undefined') return
+          if (!('speechSynthesis' in window)) return
+          this.speechSupported = true
+        },
+
+        chunkText(text) {
+          const maxLen = 200
+          const chunks = []
+          const sentences = text.split(".")
+
+          for (let sentence of sentences) {
+            sentence = sentence.trim()
+            if (!sentence) continue
+
+            let para = sentence + "."
+
+            while (para.length > maxLen) {
+              let idx = para.lastIndexOf(" ", maxLen)
+              if (idx <= 0) idx = maxLen
+              chunks.push(para.slice(0, idx))
+              para = para.slice(idx).trim()
+            }
+            if (para.length) chunks.push(para)
+          }
+          return chunks
+        },
+
+        startSpeech() {
+    if (!this.speechSupported || !this.padText || !this.padText.trim()) return;
+
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+
+    synth.cancel();
+    this.isSpeaking = false;
+    this.isPaused = false;
+    this.currentUtterance = null;
+
+    const text = this.padText.trim();
+    const chunks = this.chunkText(text);
+    if (!chunks.length) return;
+
+    this.speechTextHash = this.fnv1a32(text);
+
+    const voices = synth.getVoices() || [];
+    let voice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en-gb'));
+    if (!voice) voice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+
+    this.isSpeaking = true;
+    this.isPaused = false;
+
+    let idx = 0;
+
+    const speakNext = () => {
+      if (!this.isSpeaking || this.isPaused) return;
+
+      const utter = new SpeechSynthesisUtterance(chunks[idx]);
+
+      if (voice) {
+        utter.voice = voice;
+        if (voice.lang) utter.lang = voice.lang;
+      } else {
+        utter.lang = "en-GB";
+      }
+
+      utter.onend = () => {
+        if (!this.isSpeaking || this.isPaused) return;
+
+        idx++;
+        if (idx < chunks.length) {
+          speakNext();
+        } else {
+          this.isSpeaking = false;
+          this.currentUtterance = null;
+        }
       };
-    },
-    methods: {
-      b64ToUint8(b64) {
-        try {
-          const bin = atob(b64);
-          const len = bin.length;
-          const bytes = new Uint8Array(len);
-          for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
-          return bytes;
-        } catch { return new Uint8Array(); }
-      },
-      fnv1a32(str){
-        let h = 0x811c9dc5;
-        for (let i = 0; i < str.length; i++){
-          h ^= str.charCodeAt(i);
-          h = (h >>> 0) * 0x01000193;
-        }
-        return h >>> 0;
-      },
-      notifyLimit() {
-        const now = Date.now();
-        if (now - this.lastNotifyAt < NOTIFY_COOLDOWN_MS) return;
-        this.lastNotifyAt = now;
-        this.$q.notify({
-          type: "negative",
-          message: `Character limit reached (${this.MAX_CHARS.toLocaleString()} chars).`,
-          timeout: 2000,
-          position: "bottom",
-        });
-      },
-      onLocalInput(evt) {
-        if (!this.ytext) return;
-        const raw = evt.target.value;
-        let capped = raw;
-        if (raw.length > this.MAX_CHARS) {
-          capped = raw.slice(0, this.MAX_CHARS);
-          if (capped !== this.padText) this.padText = capped;
-          this.notifyLimit();
-        }
-        // mark unsaved immediately when user types
-        this.saveStatus = 'unsaved';
 
-        this.ytext.doc.transact(() => {
-          this.ytext.delete(0, this.ytext.length);
-          this.ytext.insert(0, capped);
-        });
-      },
-      setupYjs() {
-        this.ydoc = new window.Y.Doc();
-        this.ytext = this.ydoc.getText("content");
+      utter.onerror = () => {
+        this.isSpeaking = false;
+        this.currentUtterance = null;
+      };
 
-        // Any content change (local or remote) updates padText.
-        this.ytext.observe(() => {
-          const newText = this.ytext.toString();
-          if (newText !== this.padText) this.padText = newText;
-          // Avoid showing "unsaved" while applying the initial snapshot
-          if (!this.suppressObserve) this.saveStatus = 'unsaved';
-        });
+      this.currentUtterance = utter;
+      synth.speak(utter);
+    };
 
-        // Outgoing updates to WS
-        this.ydoc.on("update", (update) => {
-          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            const framed = new Uint8Array(1 + update.length);
-            framed[0] = FRAME_YUPDATE;
-            framed.set(update, 1);
-            this.ws.send(framed);
-          }
-        });
-      },
-      connectWS() {
-        try { this.ws?.close(); } catch {}
-        this.ws = new WebSocket(padsWsUrl(this.padsId));
-        this.ws.binaryType = "arraybuffer";
-        this.ws.onopen = async () => {
-          await this.loadSnapshotOnce();
-          this.wsHeartbeat = setInterval(() => {
-            if (this.ws?.readyState === WebSocket.OPEN)
-              this.ws.send(Uint8Array.of(FRAME_PING));
-          }, 25000);
-        };
-        this.ws.onmessage = (evt) => {
-          const buf = new Uint8Array(evt.data);
-          if (!buf.length) return;
-          const mtype = buf[0];
-          if (mtype === FRAME_YUPDATE) {
-            try { Y.applyUpdate(this.ydoc, buf.subarray(1)); } catch {}
-          }
-        };
-        const origClose = this.ws.onclose;
-        this.ws.onclose = (...args) => {
-          this.postSnapshot(true);
-          clearInterval(this.wsHeartbeat);
-          this.wsHeartbeat = null;
-          this.reconnectTimer = setTimeout(() => this.connectWS(), 1000);
-          if (origClose) origClose.apply(this.ws, args);
-        };
-      },
-      async loadSnapshotOnce() {
-        try {
-          const r = await fetch(padsSnapshotUrl(this.padsId));
-          if (!r.ok) return;
-          const j = await r.json();
+    speakNext();
+  },
 
-          // Suppress "unsaved" while initial snapshot applies
-          this.suppressObserve = true;
-          if (j && j.exists && j.update_blob) {
-            const bytes = this.b64ToUint8(j.update_blob);
-            if (bytes.length) Y.applyUpdate(this.ydoc, bytes);
+
+  hardStopSpeech() {
+    if (!this.speechSupported) return
+    const synth = window.speechSynthesis
+    if (!synth) return
+    synth.cancel()
+    this.isSpeaking = false
+    this.isPaused = false
+    this.currentUtterance = null
+  },
+
+  toggleSpeech() {
+    if (!this.speechSupported || !this.padText) return;
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+
+    // If currently speaking (not paused) → PAUSE (actually stop playback)
+    if (this.isSpeaking && !this.isPaused) {
+      // We *could* call synth.pause(), but Firefox can misbehave with resume,
+      // so just hard-stop here and treat next click as "start again".
+      this.hardStopSpeech();
+      this.isPaused = true; // just for icon/label logic
+      return;
+    }
+
+    // If we were "paused" (after user hit pause) → start again from the top
+    if (this.isSpeaking && this.isPaused) {
+      // Ensure any leftover speech queue is cleared
+      this.hardStopSpeech();
+      this.isPaused = false;
+      this.startSpeech();
+      return;
+    }
+
+    // Not speaking at all → start fresh
+    this.startSpeech();
+  }
+  ,
+
+        onLocalInput(evt) {
+          if (!this.ytext) return
+          const raw = evt.target.value
+          let capped = raw
+          if (raw.length > this.MAX_CHARS) {
+            capped = raw.slice(0, this.MAX_CHARS)
+            if (capped !== this.padText) this.padText = capped
+            this.notifyLimit()
           }
-          const text = this.ytext.toString();
-          if (text.length > this.MAX_CHARS) {
-            this.ytext.doc.transact(() => {
-              this.ytext.delete(0, this.ytext.length);
-              this.ytext.insert(0, text.slice(0, this.MAX_CHARS));
-            });
+
+          this.saveStatus = 'unsaved'
+
+          this.ytext.doc.transact(() => {
+            this.ytext.delete(0, this.ytext.length)
+            this.ytext.insert(0, capped)
+          })
+        },
+        setupYjs() {
+          this.ydoc = new window.Y.Doc()
+          this.ytext = this.ydoc.getText("content")
+
+          this.ytext.observe(() => {
+            const newText = this.ytext.toString()
+            if (newText !== this.padText) this.padText = newText
+            if (!this.suppressObserve) this.saveStatus = 'unsaved'
+          })
+
+          this.ydoc.on("update", (update) => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+              const framed = new Uint8Array(1 + update.length)
+              framed[0] = FRAME_YUPDATE
+              framed.set(update, 1)
+              this.ws.send(framed)
+            }
+          })
+        },
+        connectWS() {
+          try { this.ws?.close() } catch {}
+          this.ws = new WebSocket(padsWsUrl(this.padsId))
+          this.ws.binaryType = "arraybuffer"
+          this.ws.onopen = async () => {
+            await this.loadSnapshotOnce()
+            this.wsHeartbeat = setInterval(() => {
+              if (this.ws?.readyState === WebSocket.OPEN)
+                this.ws.send(Uint8Array.of(FRAME_PING))
+            }, 25000)
           }
-          this.suppressObserve = false;
-          this.saveStatus = 'saved'; // initial state after load
-        } catch (e) {
-          console.warn("Failed to load snapshot", e);
-        }
+          this.ws.onmessage = (evt) => {
+            const buf = new Uint8Array(evt.data)
+            if (!buf.length) return
+            const mtype = buf[0]
+            if (mtype === FRAME_YUPDATE) {
+              try { Y.applyUpdate(this.ydoc, buf.subarray(1)) } catch {}
+            }
+          }
+          const origClose = this.ws.onclose
+          this.ws.onclose = (...args) => {
+            this.postSnapshot(true)
+            clearInterval(this.wsHeartbeat)
+            this.wsHeartbeat = null
+            this.reconnectTimer = setTimeout(() => this.connectWS(), 1000)
+            if (origClose) origClose.apply(this.ws, args)
+          }
+        },
+        async loadSnapshotOnce() {
+          try {
+            const r = await fetch(padsSnapshotUrl(this.padsId))
+            if (!r.ok) return
+            const j = await r.json()
+
+            this.suppressObserve = true
+            if (j && j.exists && j.update_blob) {
+              const bytes = this.b64ToUint8(j.update_blob)
+              if (bytes.length) Y.applyUpdate(this.ydoc, bytes)
+            }
+            const text = this.ytext.toString()
+            if (text.length > this.MAX_CHARS) {
+              this.ytext.doc.transact(() => {
+                this.ytext.delete(0, this.ytext.length)
+                this.ytext.insert(0, text.slice(0, this.MAX_CHARS))
+              })
+            }
+            this.suppressObserve = false
+            this.saveStatus = 'saved'
+          } catch (e) {}
+        },
+        async postSnapshot(final = false) {
+          try {
+            const text = this.ytext.toString()
+            const hash = this.fnv1a32(text)
+            if (!final && hash === this.lastHash) return
+            if (!final) {
+              const now = Date.now()
+              if (now - this.lastSnapshotAt < CLIENT_THROTTLE_MS) return
+            }
+            const update = Y.encodeStateAsUpdate(this.ydoc)
+            const r = await fetch(padsSnapshotUrl(this.padsId), {
+              method: "POST",
+              keepalive: final === true,
+              headers: {
+                "Content-Type": "application/octet-stream",
+                "x-char-count": String(text.length),
+                ...(final ? { "x-final": "1" } : {})
+              },
+              body: update,
+            })
+            if (r.ok) {
+              this.lastSnapshotAt = Date.now()
+              this.lastHash = hash
+              this.saveStatus = 'saved'
+            }
+          } catch (e) {}
+        },
+        startSnapshotLoop() {
+          if (this.snapshotTimer) return
+          setTimeout(() => this.postSnapshot(false), 1000 + Math.random() * JITTER_MS)
+          this.snapshotTimer = setInterval(() => {
+            this.postSnapshot(false)
+          }, LOOP_INTERVAL_MS + Math.floor(Math.random() * JITTER_MS))
+        },
+        stopSnapshotLoop() {
+          if (this.snapshotTimer) clearInterval(this.snapshotTimer)
+          this.snapshotTimer = null
+        },
       },
-      async postSnapshot(final = false) {
-        try {
-          const text = this.ytext.toString();
-          const hash = this.fnv1a32(text);
-          if (!final && hash === this.lastHash) return;
-          if (!final) {
-            const now = Date.now();
-            if (now - this.lastSnapshotAt < CLIENT_THROTTLE_MS) return;
+      mounted() {
+        this.initSpeech()
+
+        whenYReady(() => {
+          this.setupYjs()
+          if (this.initial_content != ""){
+            this.suppressObserve = true
+            const bytes = this.b64ToUint8(this.initial_content)
+            if (bytes.length) {
+              try { Y.applyUpdate(this.ydoc, bytes) } catch {}
+            }
+            this.padText = this.ytext.toString()
+            this.suppressObserve = false
+            this.saveStatus = 'saved'
           }
-          const update = Y.encodeStateAsUpdate(this.ydoc);
-          const r = await fetch(padsSnapshotUrl(this.padsId), {
-            method: "POST",
-            keepalive: final === true,
-            headers: {
-              "Content-Type": "application/octet-stream",
-              "x-char-count": String(text.length),
-              ...(final ? { "x-final": "1" } : {})
-            },
-            body: update,
-          });
-          if (r.ok) {
-            this.lastSnapshotAt = Date.now();
-            this.lastHash = hash;
-            this.saveStatus = 'saved'; // mark saved on success
-          }
-        } catch (e) {
-          if (!final) console.warn("Snapshot failed:", e);
-        }
+          this.connectWS()
+          this.startSnapshotLoop()
+          const finalSave = () => this.postSnapshot(true)
+          window.addEventListener("pagehide", finalSave)
+          window.addEventListener("beforeunload", finalSave)
+        })
       },
-      startSnapshotLoop() {
-        if (this.snapshotTimer) return;
-        setTimeout(() => this.postSnapshot(false), 1000 + Math.random() * JITTER_MS);
-        this.snapshotTimer = setInterval(() => {
-          this.postSnapshot(false);
-        }, LOOP_INTERVAL_MS + Math.floor(Math.random() * JITTER_MS));
+      unmounted() {
+        try { this.ws?.close() } catch {}
+        if (this.wsHeartbeat) clearInterval(this.wsHeartbeat)
+        this.stopSnapshotLoop()
+        this.hardStopSpeech()
+        try { this.ydoc?.destroy() } catch {}
       },
-      stopSnapshotLoop() {
-        if (this.snapshotTimer) clearInterval(this.snapshotTimer);
-        this.snapshotTimer = null;
-      },
-    },
-    mounted() {
-      whenYReady(() => {
-        this.setupYjs();
-        if (this.initial_content != ""){
-          this.suppressObserve = true;
-          const bytes = this.b64ToUint8(this.initial_content);
-          if (bytes.length) {
-            try { Y.applyUpdate(this.ydoc, bytes); } catch {}
-          }
-          this.padText = this.ytext.toString();
-          this.suppressObserve = false;
-          this.saveStatus = 'saved';
-        }
-        this.connectWS();
-        this.startSnapshotLoop();
-        const finalSave = () => this.postSnapshot(true);
-        window.addEventListener("pagehide", finalSave);
-        window.addEventListener("beforeunload", finalSave);
-      });
-    },
-    unmounted() {
-      try { this.ws?.close(); } catch {}
-      if (this.wsHeartbeat) clearInterval(this.wsHeartbeat);
-      this.stopSnapshotLoop();
-      try { this.ydoc?.destroy(); } catch {}
-    },
-  });
+    })
 </script>
 {% endblock %}
