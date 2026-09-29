@@ -30,6 +30,29 @@ Create a pad and share the link. Anyone with the link can view and edit the docu
 3. Share the pad link with collaborators
 4. Edit together in real-time
 
+## Shared teleprompter
+
+Open the same pad link on your phone and computer, then select **Teleprompter**.
+The large white-on-black reading view opens on every connected screen, initially
+paused. Press **Play** to scroll at 140 words per minute. **Slower**, **Faster**,
+**Play/Pause**, and **Cancel** control the shared session from either device.
+Cancel closes the reading view everywhere; the existing read-aloud button is
+unchanged.
+
+Use **Mirror** on the screen facing teleprompter glass and choose **Horizontal**
+(left/right), **Vertical** (top/bottom), or **Off**. For a screen lying beneath
+the glass, choose Vertical when the screen's bottom edge faces the presenter,
+or Horizontal when it faces the camera. Check the reflection from the presenter's
+position. The whole visible reading area is flipped, including its scrolling
+direction, so the reflection reads and scrolls normally. This setting applies
+only to that screen; controls remain readable and playback stays in sync.
+
+The reading position stays in sync by word, even when screens wrap lines
+differently. Rejoining devices catch up to the active session. At the end,
+**Replay** starts again from the beginning. Live edits remain visible, and the
+browser keeps the screen awake where supported. The session ends when everyone
+disconnects; it is not saved with the document.
+
 ## Powered by LNbits
 
 [LNbits](https://lnbits.com) is a free and open-source lightning accounts system.

@@ -73,6 +73,16 @@
                 >
                   <q-tooltip>Show URL of the QR code</q-tooltip>
                 </q-btn>
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  color="primary"
+                  icon="subject"
+                  label="Teleprompter"
+                  :disable="!teleprompterConnected || !padText.trim()"
+                  @click="sendTeleprompter('open')"
+                ></q-btn>
               </div>
             </div>
           </q-card-section>
@@ -84,7 +94,9 @@
 <q-dialog v-model="urlShow" position="top">
   <lnbits-qrcode :value="currentUrl" :show-buttons="false"></lnbits-qrcode>
 </q-dialog>
+{% include "chaospad/_teleprompter.html" %}
 {% endblock %} {% block styles %}
+<link rel="stylesheet" href="/chaospad/static/css/teleprompter.css" />
 <style>
   .q-header,
   .q-footer {
@@ -113,7 +125,7 @@
     color: #3a3a36;
     border: 1px solid #d7cfbf;
     border-radius: 8px;
-    padding: 14px 16px;
+    padding: 14px 16px 100px;
     line-height: 1.55;
     font-size: 16px;
     resize: none;
@@ -129,6 +141,9 @@
     bottom: 8px;
     right: 12px;
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    left: 12px;
     gap: 10px;
     align-items: center;
     font-size: 13px;
@@ -150,6 +165,7 @@
   }
 </style>
 {% endblock %} {% block scripts %}
+<script src="/chaospad/static/js/teleprompter.js"></script>
 <script type="module">
   import * as Y from 'https://esm.sh/yjs@13.6.18'
   window.Y = Y
@@ -180,7 +196,7 @@
 
     window.app = Vue.createApp({
       el: "#vue",
-      mixins: [windowMixin],
+      mixins: [windowMixin, window.chaospadTeleprompter],
       data() {
         return {
           padsId: "{{ pads_id }}",
@@ -430,10 +446,13 @@
             const mtype = buf[0]
             if (mtype === FRAME_YUPDATE) {
               try { Y.applyUpdate(this.ydoc, buf.subarray(1)) } catch {}
+            } else if (mtype === 0x03) {
+              this.receiveTeleprompter(buf.subarray(1))
             }
           }
           const origClose = this.ws.onclose
           this.ws.onclose = (...args) => {
+            this.disconnectTeleprompter()
             this.postSnapshot(true)
             clearInterval(this.wsHeartbeat)
             this.wsHeartbeat = null
@@ -525,6 +544,8 @@
         })
       },
       unmounted() {
+        if (this.ws) this.ws.onclose = null
+        if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
         try { this.ws?.close() } catch {}
         if (this.wsHeartbeat) clearInterval(this.wsHeartbeat)
         this.stopSnapshotLoop()

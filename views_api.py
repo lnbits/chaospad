@@ -28,6 +28,7 @@ from .models import (
     SnapshotResponse,
     SnapshotWriteResult,
 )
+from .teleprompter import FRAME_TELEPROMPTER, TeleprompterState
 from .views import chaospad_generic_router
 
 pads_filters = parse_filters(PadsFilters)
@@ -132,6 +133,7 @@ async def api_delete_pads(
 FRAME_YUPDATE = bytes([0x01])
 FRAME_PING = bytes([0x02])
 ROOMS: dict[str, set[WebSocket]] = {}
+TELEPROMPTERS: dict[str, TeleprompterState] = {}
 
 
 def _get_room(peers_map: dict[str, set[WebSocket]], room_id: str) -> set[WebSocket]:
@@ -156,7 +158,7 @@ def _prune_disconnected(peers: set[WebSocket]) -> None:
             peers.discard(peer)
 
 
-async def _fanout(peers: set[WebSocket], sender: WebSocket, mtype: int, payload: bytes) -> None:
+async def _fanout(peers: set[WebSocket], sender: WebSocket | None, mtype: int, payload: bytes) -> None:
     dead: list[WebSocket] = []
     for peer in list(peers):
         if peer is sender:
@@ -172,6 +174,14 @@ async def _fanout(peers: set[WebSocket], sender: WebSocket, mtype: int, payload:
         peers.discard(d)
 
 
+async def _handle_teleprompter(ws: WebSocket, peers: set[WebSocket], state: TeleprompterState, payload: bytes) -> None:
+    async with state.lock:
+        if payload == b"sync":
+            await ws.send_bytes(bytes([FRAME_TELEPROMPTER]) + state.payload())
+        elif state.command(payload):
+            await _fanout(peers, None, FRAME_TELEPROMPTER, state.payload())
+
+
 @chaospad_generic_router.websocket("/ws/{pads_id}")
 async def ws_room(ws: WebSocket, pads_id: str):
     if not await _ensure_pad_or_close(ws, pads_id):
@@ -184,12 +194,18 @@ async def ws_room(ws: WebSocket, pads_id: str):
 
     await ws.accept()
     peers.add(ws)
+    teleprompter = TELEPROMPTERS.setdefault(pads_id, TeleprompterState())
     try:
+        async with teleprompter.lock:
+            await ws.send_bytes(bytes([FRAME_TELEPROMPTER]) + teleprompter.payload())
         while True:
             data = await ws.receive_bytes()
             if not data:
                 continue
             mtype, payload = data[0], data[1:]
+            if mtype == FRAME_TELEPROMPTER:
+                await _handle_teleprompter(ws, peers, teleprompter, payload)
+                continue
             if mtype == 0x02:
                 continue
             await _fanout(peers, ws, mtype, payload)
@@ -200,6 +216,7 @@ async def ws_room(ws: WebSocket, pads_id: str):
         peers.discard(ws)
         if not ROOMS.get(pads_id):
             ROOMS.pop(pads_id, None)
+            TELEPROMPTERS.pop(pads_id, None)
 
 
 @chaospad_api_router.get(

@@ -1,0 +1,123 @@
+<q-dialog
+  :model-value="teleprompter.active"
+  maximized
+  persistent
+  @show="startTeleprompterView"
+  @hide="stopTeleprompterView"
+>
+  <q-card class="teleprompter-screen">
+    <div class="teleprompter-heading">
+      <span>Teleprompter</span>
+      <span class="teleprompter-status" role="status">
+        <template v-if="!teleprompterConnected">Reconnecting…</template>
+        <template v-else-if="teleprompterEnded">End of script</template>
+        <template v-else>
+          <span v-text="teleprompter.running ? 'Playing' : 'Paused'"></span>
+          · Controls shared across devices
+        </template>
+      </span>
+    </div>
+    <div
+      ref="teleprompterViewport"
+      class="teleprompter-viewport"
+      :class="`teleprompter-viewport--${teleprompterMirror}`"
+    >
+      <div ref="teleprompterScript" class="teleprompter-script">
+        <span
+          v-for="(word, index) in teleprompterWords"
+          :key="index"
+          v-text="word"
+        ></span>
+      </div>
+    </div>
+    <div class="teleprompter-controls">
+      <q-btn
+        outline
+        no-caps
+        icon="remove"
+        label="Slower"
+        :disable="!teleprompterConnected || teleprompter.speed <= 40"
+        @click="sendTeleprompter('slower')"
+      ></q-btn>
+      <span
+        class="teleprompter-speed"
+        v-text="`${teleprompter.speed} wpm`"
+      ></span>
+      <q-btn
+        outline
+        no-caps
+        icon="add"
+        label="Faster"
+        :disable="!teleprompterConnected || teleprompter.speed >= 300"
+        @click="sendTeleprompter('faster')"
+      ></q-btn>
+      <q-btn
+        unelevated
+        no-caps
+        color="white"
+        text-color="black"
+        :icon="teleprompterPlaying ? 'pause' : 'play_arrow'"
+        :label="teleprompterEnded ? 'Replay' : teleprompterPlaying ? 'Pause' : 'Play'"
+        :disable="!teleprompterConnected || !teleprompterWords.length"
+        @click="toggleTeleprompter"
+      ></q-btn>
+      <q-btn-dropdown
+        :outline="teleprompterMirror === 'off'"
+        :unelevated="teleprompterMirror !== 'off'"
+        no-caps
+        color="white"
+        :text-color="teleprompterMirror !== 'off' ? 'black' : 'white'"
+        icon="flip"
+        :label="`Mirror: ${teleprompterMirror}`"
+      >
+        <q-list
+          class="bg-black text-white"
+          role="menu"
+          aria-label="Mirror this screen"
+        >
+          <q-item-label header class="text-grey-4"
+            >This screen only</q-item-label
+          >
+          <q-item
+            v-for="mode in [
+              {value: 'off', label: 'Off', description: 'Read the screen directly'},
+              {value: 'horizontal', label: 'Horizontal', description: 'Flip left and right'},
+              {value: 'vertical', label: 'Vertical', description: 'Flip top and bottom'}
+            ]"
+            :key="mode.value"
+            clickable
+            v-close-popup
+            role="menuitemradio"
+            :aria-checked="teleprompterMirror === mode.value"
+            @click="teleprompterMirror = mode.value"
+          >
+            <q-item-section>
+              <q-item-label v-text="mode.label"></q-item-label>
+              <q-item-label
+                caption
+                class="text-grey-4"
+                v-text="mode.description"
+              ></q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-icon
+                v-if="teleprompterMirror === mode.value"
+                name="check"
+                color="white"
+              ></q-icon>
+            </q-item-section>
+          </q-item>
+        </q-list>
+      </q-btn-dropdown>
+      <q-btn
+        flat
+        no-caps
+        icon="close"
+        label="Cancel"
+        @click="cancelTeleprompter"
+      >
+        <q-tooltip>End the teleprompter on all connected screens</q-tooltip>
+      </q-btn>
+    </div>
+  </q-card>
+</q-dialog>

@@ -1,4 +1,4 @@
-from lnbits.db import Database, Filters, Page
+from lnbits.db import SQLITE, Database, Filters, Page
 from lnbits.helpers import urlsafe_short_hash
 
 from .models import (
@@ -124,7 +124,7 @@ async def get_latest_snapshot(pads_id: str) -> bytes | None:
 
 
 async def prune_old_snapshots(pads_id: str, keep: int = 20) -> None:
-    limit_clause = "LIMIT -1 OFFSET :keep" if db.type == "sqlite" else "LIMIT ALL OFFSET :keep"
+    limit_clause = "LIMIT -1 OFFSET :keep" if db.type == SQLITE else "LIMIT ALL OFFSET :keep"
     await db.execute(
         f"""
         WITH old AS (
