@@ -94,8 +94,7 @@
 <q-dialog v-model="urlShow" position="top">
   <lnbits-qrcode :value="currentUrl" :show-buttons="false"></lnbits-qrcode>
 </q-dialog>
-{% include "chaospad/_teleprompter.html" %}
-{% endblock %} {% block styles %}
+{% include "chaospad/_teleprompter.html" %} {% endblock %} {% block styles %}
 <link rel="stylesheet" href="/chaospad/static/css/teleprompter.css" />
 <style>
   .q-header,
