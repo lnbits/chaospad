@@ -35,7 +35,8 @@ Create a pad and share the link. Anyone with the link can view and edit the docu
 Open the same pad link on your phone and computer, then select **Teleprompter**.
 The large white-on-black reading view opens on every connected screen, initially
 paused. Press **Play** to scroll at 140 words per minute. **Slower**, **Faster**,
-**Play/Pause**, and **Cancel** control the shared session from either device.
+**Play/Pause**, **Restart**, and **Cancel** control the shared session from either
+device. Restart returns every screen to the beginning and starts playback again.
 Cancel closes the reading view everywhere; the existing read-aloud button is
 unchanged.
 
@@ -52,6 +53,8 @@ only to that screen; controls remain readable and playback stays in sync.
 heading and controls hide after three seconds without interaction. Tap the
 script to reveal them again. Controls stay visible while the Mirror menu is
 open, and hiding them does not move the text or pause playback.
+Controls fit on one row on desktop and landscape mobile, using compact icons
+when space is limited. Portrait mobile keeps labelled, wrapping controls.
 
 The reading position stays in sync by word, even when screens wrap lines
 differently. Rejoining devices catch up to the active session. At the end,

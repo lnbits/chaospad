@@ -51,22 +51,81 @@
 
 .teleprompter-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
   align-items: center;
-  gap: 12px;
-  padding: 16px 12px max(16px, env(safe-area-inset-bottom));
+  gap: 8px;
+  padding: 16px max(12px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   border-top: 1px solid #333;
 }
 
 .teleprompter-controls .q-btn {
+  flex-shrink: 0;
+  min-width: 44px;
   min-height: 44px;
+  padding: 4px 12px;
+}
+
+.teleprompter-controls > span {
+  flex-shrink: 0;
+}
+
+.teleprompter-controls .q-btn__content {
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .teleprompter-speed {
   min-width: 65px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.teleprompter-controls--compact {
+  gap: 6px;
+}
+
+.teleprompter-controls--compact .q-btn {
+  padding: 4px 8px;
+}
+
+/* Keep accessible button names while showing just the icons in a tight row. */
+.teleprompter-controls--compact .q-btn__content > .block {
+  display: none !important;
+}
+
+.teleprompter-controls--compact .q-btn .on-left {
+  margin-right: 0;
+}
+
+@media (orientation: portrait) {
+  .teleprompter-screen--mobile .teleprompter-controls {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .teleprompter-controls--compact {
+    gap: 2px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .teleprompter-controls--compact .q-btn {
+    min-width: 36px;
+    padding: 4px;
+  }
+
+  .teleprompter-controls--compact .q-btn-dropdown__arrow {
+    display: none;
+  }
+
+  .teleprompter-controls--compact .teleprompter-speed {
+    min-width: 48px;
+    font-size: 12px;
+  }
 }
 
 /* Overlay mobile controls so hiding them does not move the reading position. */

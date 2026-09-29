@@ -20,6 +20,13 @@ window.chaospadTeleprompter = {
     teleprompterMobile() {
       return this.$q.platform.is.mobile === true
     },
+    teleprompterCompactControls() {
+      return (
+        this.$q.screen.width < 1100 &&
+        (!this.teleprompterMobile ||
+          this.$q.screen.width > this.$q.screen.height)
+      )
+    },
     teleprompterFullscreenAvailable() {
       return (
         this.$q.fullscreen.isCapable &&

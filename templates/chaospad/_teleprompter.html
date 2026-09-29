@@ -44,12 +44,18 @@
         ></span>
       </div>
     </div>
-    <div ref="teleprompterControls" class="teleprompter-controls">
+    <div
+      ref="teleprompterControls"
+      class="teleprompter-controls"
+      :class="{'teleprompter-controls--compact': teleprompterCompactControls}"
+    >
       <q-btn
         outline
         no-caps
         icon="remove"
         label="Slower"
+        aria-label="Slower"
+        title="Slower"
         :disable="!teleprompterConnected || teleprompter.speed <= 40"
         @click="sendTeleprompter('slower')"
       ></q-btn>
@@ -62,6 +68,8 @@
         no-caps
         icon="add"
         label="Faster"
+        aria-label="Faster"
+        title="Faster"
         :disable="!teleprompterConnected || teleprompter.speed >= 300"
         @click="sendTeleprompter('faster')"
       ></q-btn>
@@ -72,9 +80,24 @@
         text-color="black"
         :icon="teleprompterPlaying ? 'pause' : 'play_arrow'"
         :label="teleprompterEnded ? 'Replay' : teleprompterPlaying ? 'Pause' : 'Play'"
+        :aria-label="teleprompterEnded ? 'Replay' : teleprompterPlaying ? 'Pause' : 'Play'"
+        :title="teleprompterEnded ? 'Replay' : teleprompterPlaying ? 'Pause' : 'Play'"
         :disable="!teleprompterConnected || !teleprompterWords.length"
         @click="toggleTeleprompter"
       ></q-btn>
+      <q-btn
+        flat
+        no-caps
+        icon="replay"
+        label="Restart"
+        aria-label="Restart"
+        :disable="!teleprompterConnected || !teleprompterWords.length"
+        @click="sendTeleprompter('restart')"
+      >
+        <q-tooltip
+          >Restart playback from the beginning on all screens</q-tooltip
+        >
+      </q-btn>
       <q-btn-dropdown
         v-model="teleprompterMirrorMenuOpen"
         :outline="teleprompterMirror === 'off'"
@@ -84,6 +107,8 @@
         :text-color="teleprompterMirror !== 'off' ? 'black' : 'white'"
         icon="flip"
         :label="`Mirror: ${teleprompterMirror}`"
+        :toggle-aria-label="`Mirror: ${teleprompterMirror}`"
+        :title="`Mirror: ${teleprompterMirror}`"
       >
         <q-list
           class="bg-black text-white"
@@ -130,6 +155,8 @@
           no-caps
           :icon="$q.fullscreen.isActive ? 'fullscreen_exit' : 'fullscreen'"
           :label="$q.fullscreen.isActive ? 'Exit fullscreen' : 'Fullscreen'"
+          :aria-label="$q.fullscreen.isActive ? 'Exit fullscreen' : 'Fullscreen'"
+          :title="$q.fullscreen.isActive ? 'Exit fullscreen' : 'Fullscreen'"
           :disable="!teleprompterFullscreenAvailable"
           @click="toggleTeleprompterFullscreen"
         ></q-btn>
@@ -142,6 +169,7 @@
         no-caps
         icon="close"
         label="Cancel"
+        aria-label="Cancel"
         @click="cancelTeleprompter"
       >
         <q-tooltip>End the teleprompter on all connected screens</q-tooltip>
