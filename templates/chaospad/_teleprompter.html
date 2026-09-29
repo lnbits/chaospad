@@ -5,7 +5,15 @@
   @show="startTeleprompterView"
   @hide="stopTeleprompterView"
 >
-  <q-card class="teleprompter-screen">
+  <q-card
+    class="teleprompter-screen"
+    :class="{
+      'teleprompter-screen--mobile': teleprompterMobile,
+      'teleprompter-screen--controls-hidden': teleprompterMobile && !teleprompterControlsVisible
+    }"
+    @pointerdown.capture="revealTeleprompterControls"
+    @keydown.capture="revealTeleprompterControls"
+  >
     <div class="teleprompter-heading">
       <span>Teleprompter</span>
       <span class="teleprompter-status" role="status">
@@ -16,11 +24,17 @@
           · Controls shared across devices
         </template>
       </span>
+      <span v-if="teleprompterMobile" class="teleprompter-status">
+        Tap the script to show controls
+      </span>
     </div>
     <div
       ref="teleprompterViewport"
       class="teleprompter-viewport"
       :class="`teleprompter-viewport--${teleprompterMirror}`"
+      tabindex="0"
+      role="region"
+      aria-label="Teleprompter script"
     >
       <div ref="teleprompterScript" class="teleprompter-script">
         <span
@@ -30,7 +44,7 @@
         ></span>
       </div>
     </div>
-    <div class="teleprompter-controls">
+    <div ref="teleprompterControls" class="teleprompter-controls">
       <q-btn
         outline
         no-caps
@@ -62,6 +76,7 @@
         @click="toggleTeleprompter"
       ></q-btn>
       <q-btn-dropdown
+        v-model="teleprompterMirrorMenuOpen"
         :outline="teleprompterMirror === 'off'"
         :unelevated="teleprompterMirror !== 'off'"
         no-caps
@@ -109,6 +124,19 @@
           </q-item>
         </q-list>
       </q-btn-dropdown>
+      <span>
+        <q-btn
+          flat
+          no-caps
+          :icon="$q.fullscreen.isActive ? 'fullscreen_exit' : 'fullscreen'"
+          :label="$q.fullscreen.isActive ? 'Exit fullscreen' : 'Fullscreen'"
+          :disable="!teleprompterFullscreenAvailable"
+          @click="toggleTeleprompterFullscreen"
+        ></q-btn>
+        <q-tooltip v-if="!teleprompterFullscreenAvailable">
+          Fullscreen is not supported in this browser
+        </q-tooltip>
+      </span>
       <q-btn
         flat
         no-caps

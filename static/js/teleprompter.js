@@ -5,7 +5,9 @@ window.chaospadTeleprompter = {
       teleprompter: {active: false, running: false, speed: 140, position: 0},
       teleprompterConnected: false,
       teleprompterEnded: false,
-      teleprompterMirror: 'off'
+      teleprompterMirror: 'off',
+      teleprompterMirrorMenuOpen: false,
+      teleprompterControlsVisible: true
     }
   },
   computed: {
@@ -14,14 +16,72 @@ window.chaospadTeleprompter = {
     },
     teleprompterPlaying() {
       return this.teleprompter.running && !this.teleprompterEnded
+    },
+    teleprompterMobile() {
+      return this.$q.platform.is.mobile === true
+    },
+    teleprompterFullscreenAvailable() {
+      return (
+        this.$q.fullscreen.isCapable &&
+        (document.fullscreenEnabled ?? document.webkitFullscreenEnabled ?? true)
+      )
     }
   },
   watch: {
     padText() {
       if (this.teleprompter.active) this.$nextTick(this.measureTeleprompter)
+    },
+    teleprompterMirrorMenuOpen() {
+      this.revealTeleprompterControls()
+    },
+    teleprompterConnected() {
+      this.revealTeleprompterControls()
+    },
+    '$q.fullscreen.isActive'(active) {
+      if (!active) this._teleprompterOwnsFullscreen = false
+      this.revealTeleprompterControls()
     }
   },
   methods: {
+    revealTeleprompterControls() {
+      clearTimeout(this._teleprompterControlsTimer)
+      this.teleprompterControlsVisible = true
+      if (
+        !this.teleprompter.active ||
+        !this.teleprompterMobile ||
+        !this.teleprompterConnected ||
+        this.teleprompterMirrorMenuOpen
+      )
+        return
+      this._teleprompterControlsTimer = setTimeout(() => {
+        // Keep keyboard-focused controls available until focus moves away.
+        if (this.$refs.teleprompterControls?.querySelector(':focus-visible')) {
+          this.revealTeleprompterControls()
+          return
+        }
+        this.teleprompterControlsVisible = false
+      }, 3000)
+    },
+    async toggleTeleprompterFullscreen() {
+      try {
+        if (this.$q.fullscreen.isActive) {
+          await this.$q.fullscreen.exit()
+        } else {
+          await this.$q.fullscreen.request()
+          this._teleprompterOwnsFullscreen = true
+          if (!this.teleprompter.active) {
+            await this.$q.fullscreen.exit()
+            this._teleprompterOwnsFullscreen = false
+          }
+        }
+      } catch {
+        this.$q.notify({
+          type: 'warning',
+          message: 'Your browser could not switch fullscreen mode.'
+        })
+      }
+      this.revealTeleprompterControls()
+    },
     sendTeleprompter(action) {
       if (this.ws?.readyState !== WebSocket.OPEN) return
       const command = new TextEncoder().encode(action)
@@ -81,8 +141,16 @@ window.chaospadTeleprompter = {
       this._teleprompterResize.observe(this.$refs.teleprompterViewport)
       this.measureTeleprompter()
       this.keepTeleprompterAwake()
+      this.revealTeleprompterControls()
     },
     stopTeleprompterView() {
+      clearTimeout(this._teleprompterControlsTimer)
+      this.teleprompterControlsVisible = true
+      this.teleprompterMirrorMenuOpen = false
+      if (this._teleprompterOwnsFullscreen) {
+        this._teleprompterOwnsFullscreen = false
+        this.$q.fullscreen.exit().catch(() => {})
+      }
       cancelAnimationFrame(this._teleprompterFrame)
       this._teleprompterResize?.disconnect()
       this._teleprompterWakeLock?.release().catch(() => {})

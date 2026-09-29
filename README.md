@@ -47,6 +47,12 @@ position. The whole visible reading area is flipped, including its scrolling
 direction, so the reflection reads and scrolls normally. This setting applies
 only to that screen; controls remain readable and playback stays in sync.
 
+**Fullscreen** fills the display where supported by the browser; use
+**Exit fullscreen** to return. This affects only your screen. On mobile, the
+heading and controls hide after three seconds without interaction. Tap the
+script to reveal them again. Controls stay visible while the Mirror menu is
+open, and hiding them does not move the text or pause playback.
+
 The reading position stays in sync by word, even when screens wrap lines
 differently. Rejoining devices catch up to the active session. At the end,
 **Replay** starts again from the beginning. Live edits remain visible, and the
