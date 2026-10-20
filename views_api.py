@@ -74,7 +74,7 @@ async def api_update_pads(
     if pads.user_id != user.id:
         raise HTTPException(HTTPStatus.FORBIDDEN, "You do not own this pads.")
 
-    pads = await update_pads(Pads(**{**pads.dict(), **data.dict()}))
+    pads = await update_pads(Pads(**{**pads.model_dump(), **data.model_dump()}))
     return pads
 
 
