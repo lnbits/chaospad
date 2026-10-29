@@ -23,8 +23,8 @@ class PadsFilters(FilterModel):
     __search_fields__ = ["name"]
     __sort_fields__ = ["name", "created_at", "updated_at"]
 
-    created_at: datetime | None
-    updated_at: datetime | None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class SnapshotResponse(BaseModel):

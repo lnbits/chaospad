@@ -19,7 +19,7 @@ def chaospad_renderer():
 # Backend admin page
 @chaospad_generic_router.get("/", response_class=HTMLResponse)
 async def index(req: Request, user: User = Depends(check_user_exists)):
-    return chaospad_renderer().TemplateResponse("chaospad/index.html", {"request": req, "user": user.json()})
+    return chaospad_renderer().TemplateResponse("chaospad/index.html", {"request": req, "user": user.model_dump_json()})
 
 
 # Frontend shareable page
