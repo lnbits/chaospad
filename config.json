@@ -1,12 +1,12 @@
 {
   "id": "chaospad",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "ChaosPad",
   "repo": "https://github.com/lnbits/chaospad",
   "short_description": "Collaborative pads",
   "description": "",
   "tile": "/chaospad/static/image/chaospad.png",
-  "min_lnbits_version": "1.7.0",
+  "min_lnbits_version": "1.7.0-rc1",
   "contributors": [
     {
       "name": "Ben Arc",
